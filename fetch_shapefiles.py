@@ -1,40 +1,45 @@
 '''
 This script will download TIGER data shapefiles from the Census FTP site.
-It can be used to download a set of geographies defined in GEO_TYPES_LIST,
-or can be used to fetch files for a single state and/or single geography type.
+It can be used to download a set of geographies defined in `GEO_TYPES_LIST`,
+or can be used to fetch files for specific states and/or geography types.
+The default year for the data is 2014, but alternate years, dating back
+to 2010, can be specific with the -y flag.  In contrast to the state and
+geography type parameters only one data year can be indicated each time
+the script is run.
 
->> python fetch_shapefiles.py
->> python fetch_shapefiles.py -s WA
->> python fetch_shapefiles.py -g place
->> python fetch_shapefiles.py -s WA -g place
+    >> python fetch_shapefiles.py
+    >> python fetch_shapefiles.py -s WA
+    >> python fetch_shapefiles.py -s OR -g place -y 2012
+    >> python fetch_shapefiles.py -s OR WA -g tract bg tabblock
 
-If you use the -s argument to fetch files for a single state, the script
+If you use the -s argument to fetch files for specific states, the script
 will also download the national county, state and congressional district
-files that include data for your chosen state.
+files that include data for your chosen states.
 
-This will create DOWNLOAD_DIR and EXTRACT_DIR if necessary, fetch a zipfile
+This will create `DOWNLOAD_DIR` and `EXTRACT_DIR` if necessary, fetch a zipfile
 or set of zipfiles from the Census website, then extract the shapefiles from
 each zipfile retrieved.
 
 `DISABLE_AUTO_DOWNLOADS` will prevent certain geography types from being
 automatically downloaded if no -g argument is passed to `fetch_shapefiles.py`.
 This may be useful because certain files, such as those for Zip Code
-Tabulation Areas, are extremely large. You can still target any geography
-in `GEO_TYPES_LIST` specifically, however. So to fetch the ZCTA data:
+Tabulation Areas, Census Tabulation Blocks, etc. which are extremely large. You
+can still target any geography in `GEO_TYPES_LIST` specifically, however. So 
+to fetch the ZCTA data execute the first command and for Tracts and Block Groups
+use the second:
 
->> python fetch_shapefiles.py -g zcta5
-
-The `FTP_HOME` setting assumes you want data from the TIGER2012 directory.
-If you want a different set of shapefiles, adjust this accordingly.
+    >> python fetch_shapefiles.py -g zcta5
+    >> python fetch_shapefiles.py -g tract bg
 '''
 
-import sys, optparse, os, traceback, urllib2, zipfile
+import sys, argparse, os, traceback, urllib2, zipfile
 from os.path import isdir, join, normpath, split
+from datetime import date
 
 from __init__ import (DOWNLOAD_DIR, EXTRACT_DIR, STATE_ABBREV_LIST, \
     GEO_TYPES_LIST, DISABLE_AUTO_DOWNLOADS, get_fips_code_for_state)
 
-FTP_HOME = 'ftp://ftp2.census.gov/geo/tiger/TIGER2012/'
+FTP_HOME = 'ftp://ftp2.census.gov/geo/tiger/TIGER{0}/'
 
 
 def get_filename_list_from_ftp(target, state):
@@ -116,23 +121,32 @@ def get_all_geo_types(state=None):
 
 
 def process_options(arglist=None):
-    global options, args
-    parser = optparse.OptionParser()
-    parser.add_option(
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
         '-s', '--state',
+        nargs='+',
         dest='state',
-        help='specific state to download',
+        help='specific state(s) to download',
         choices=STATE_ABBREV_LIST
     )
-    parser.add_option(
+    parser.add_argument(
         '-g', '--geo', '--geo_type',
+        nargs='+',
         dest='geo_type',
-        help='specific geographic type to download',
+        help='specific geographic type(s) to download',
         choices=GEO_TYPES_LIST
     )
-    
-    options, args = parser.parse_args(arglist)
-    return options, args
+    parser.add_argument(
+        '-y', '--year', '--tiger_year',
+        default=2014,
+        type=int,
+        dest='year',
+        help='year to which the tiger data pertains',
+        choices=range(2010, (date.today().year+1))
+    )
+
+    options = parser.parse_args(arglist)
+    return options
 
 
 def main(args=None):
@@ -141,29 +155,39 @@ def main(args=None):
     >> python fetch_shapefiles.py -s WA
     >> python fetch_shapefiles.py -g place
     >> python fetch_shapefiles.py -s WA -g place
+    >> python fetch_shapefiles.py -s OR WA -g tract bg -y 2014
     """
-    if args is None:
-        args = sys.argv[1:]
-    options, args = process_options(args)
+    
+    global FTP_HOME
     
     # make sure we have the expected directories
     for path in [DOWNLOAD_DIR, EXTRACT_DIR]:
         if not isdir(path):
             os.mkdir(path)
 
-    state = options.state if options.state else None
-    geo_type = options.geo_type if options.geo_type else None
-    
-    # get one geo_type or all geo_types
-    if geo_type:
-        get_one_geo_type(
-            geo_type = geo_type,
-            state = state,
-        )
+    if args is None:
+        args = sys.argv[1:]
+    options = process_options(args)
+
+    # Assign parameter data to variables
+    geo_types = options.geo_type
+    states = options.state or [None]
+    FTP_HOME = FTP_HOME.format(options.year)
+
+    # get data for geotypes and states passed to script (if parameter(s)
+    # aren't provided data for all values in the class(es))
+    if geo_types:
+        for gt in geo_types:
+            for s in states:
+                get_one_geo_type(
+                    geo_type=gt,
+                    state=s
+                )
     else:
-        get_all_geo_types(
-            state = state,
-        )
+        for s in states:
+            get_all_geo_types(
+                state=s
+            )
 
 
 if __name__ == '__main__':

@@ -8,32 +8,35 @@ data from them.
 
 This script will download TIGER data shapefiles from the Census FTP site.
 It can be used to download a set of geographies defined in `GEO_TYPES_LIST`,
-or can be used to fetch files for a single state and/or single geography type.
+or can be used to fetch files for specific states and/or geography types.
+The default year for the data is 2014, but alternate years, dating back
+to 2010, can be specific with the -y flag.  In contrast to the state and
+geography type parameters only one data year can be indicated each time
+the script is run.
 
     >> python fetch_shapefiles.py
     >> python fetch_shapefiles.py -s WA
-    >> python fetch_shapefiles.py -g place
-    >> python fetch_shapefiles.py -s WA -g place
+    >> python fetch_shapefiles.py -s OR -g place -y 2012
+    >> python fetch_shapefiles.py -s OR WA -g tract bg tabblock
 
-If you use the -s argument to fetch files for a single state, the script
+If you use the -s argument to fetch files for specific states, the script
 will also download the national county, state and congressional district
-files that include data for your chosen state.
+files that include data for your chosen states.
 
-The script will create `DOWNLOAD_DIR` and `EXTRACT_DIR` directories
-if necessary, fetch a zipfile or set of zipfiles from the Census website,
-then extract the shapefiles from each zipfile retrieved.
+This will create `DOWNLOAD_DIR` and `EXTRACT_DIR` if necessary, fetch a zipfile
+or set of zipfiles from the Census website, then extract the shapefiles from
+each zipfile retrieved.
 
 `DISABLE_AUTO_DOWNLOADS` will prevent certain geography types from being
 automatically downloaded if no -g argument is passed to `fetch_shapefiles.py`.
 This may be useful because certain files, such as those for Zip Code
-Tabulation Areas, are extremely large. You can still target any geography
-in `GEO_TYPES_LIST` specifically, however. So to fetch the ZCTA data:
+Tabulation Areas, Census Tabulation Blocks, etc. which are extremely large. You
+can still target any geography in `GEO_TYPES_LIST` specifically, however. So 
+to fetch the ZCTA data execute the first command and for Tracts and Block Groups
+use the second:
 
     >> python fetch_shapefiles.py -g zcta5
-
-The `FTP_HOME` setting at the top of `fetch_shapefiles.py` assumes you want
-data from the TIGER2012 directory. If you want a different set of shapefiles,
-adjust this accordingly.
+    >> python fetch_shapefiles.py -g tract bg
 
 
 ### parse_shapefiles.py ###

@@ -2,7 +2,10 @@ DOWNLOAD_DIR = 'downloaded_files'
 EXTRACT_DIR = 'extracted_files'
 CSV_DIR = 'generated_csv'
 
+# Source of expanded names: (pdf) Page 108 -
+# https://www.census.gov/geo/maps-data/data/pdfs/tiger/tgrshp2014/TGRSHP2014_TechDoc.pdf
 GEO_TYPES_DICT = {
+    'bg': 'Block Group',
     'cd': 'Congressional Districts',
     'county': 'Counties',
     'elsd': 'Elementary School Districts',
@@ -11,19 +14,24 @@ GEO_TYPES_DICT = {
     'sldl': 'State Legislative Districts Lower',
     'sldu': 'State Legislative Districts Upper',
     'state': 'States',
+    'tabblock': 'Tabulation (Census) Block',
+    'tract': 'Census Tract',
     'unsd': 'Unified School Districts',
-    'zcta5': '5-Digit Zip Code Tabulation Area',
+    'zcta5': '5-Digit Zip Code Tabulation Area'
 }
 
 GEO_TYPES_LIST = sorted([
-    key for key, value in GEO_TYPES_DICT.iteritems()
+    key for key in GEO_TYPES_DICT.keys()
 ])
 
-# The zcta5 file is 500 Mb. DISABLE_AUTO_DOWNLOADS prevents it from being
-# fetched automatically if someone runs `fetch_shapefiles.py` with no args.
-# If you do want the Zip Code Tabulation Area shapefile, target specifically:
+# The zcta5 file is 500 Mb, tabblock, bg, and tract are also extremely large. 
+# DISABLE_AUTO_DOWNLOADS prevents these datasets from being fetched automatically
+# if someone runs `fetch_shapefiles.py` with no args. If you do want the Zip Code
+# Tabulation Area, Census Block, Block Group and/or Tract shapefiles target specifically:
 # >> python fetch_shapefiles.py -g zcta5
-DISABLE_AUTO_DOWNLOADS = ['zcta5',]
+# >> python fetch_shapefiles.py -g bg tract
+# etc...
+DISABLE_AUTO_DOWNLOADS = ['zcta5', 'tabblock', 'bg', 'tract']
 
 
 STATE_FIPS_DICT = {
@@ -318,7 +326,7 @@ def get_fips_code_for_state(state):
 
 
 STATE_ABBREV_LIST = sorted([
-    state['abbreviation'] for fips, state in STATE_FIPS_DICT.iteritems()
+    state['abbreviation'] for state in STATE_FIPS_DICT.values()
 ])
 
 
