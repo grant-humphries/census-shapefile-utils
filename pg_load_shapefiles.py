@@ -6,14 +6,10 @@ import psycopg2
 import argparse
 from osgeo import ogr
 
-# Set postgres parameters
-pg_host = 'localhost'
-pg_user = 'postgres'
-pg_dbname = 'census'
-pg_schema = 'tiger'
-
 proj_dir = 'G:/PUBLIC/GIS_Projects/Census_Analysis/Census-Postgres/census-shapefile-utils'
 data_dir = os.path.join(proj_dir, 'extracted_files')
+tiger_epsg = 4269
+or_spn_epsg = 2913
 
 geo_type_dict = {
 	'tabblock10': 'block10',
@@ -26,26 +22,69 @@ fld_type_dict = {
 	'Real': 'numeric'
 }
 
-
 def loadGeoData():
-	""""""
+	"""Load tiger shapefiles into a postgres database, grouping those that share
+	the same geo-type and data year into common tables"""
 
+	conn, cur = createPgCursor()
 	data_groups = defineDataGroups()
-	pg_cur = createPgCursor()
-	createTigerSchema()
+
+	# create schema to hold tiger data if it doesn't already exist,
+	# if it does the existing schema will remain and the error is handled
+	schema_cmd = "CREATE SCHEMA {0};".format(pg_schema)
+	try:
+		cur.execute(schema_cmd)
+		conn.commit()
+	except psycopg2.ProgrammingError as e:
+		conn.rollback()
+		print e.message
 
 	for tbl_name, shp_paths in data_groups.iteritems():
-		shp_template = shp_paths[0]
-		table_cmd = generateTableCommand(shp_template, tbl_name)
-		print table_cmd
+		for i, path in enumerate(shp_paths):
+			shp = osgeo.ogr.Open(path)
+			layer = shp.GetLayer(0)
 
+			if i == 0:
+				table_specs = generateTableCommands(layer, tbl_name)
+				drop_tbl = table_specs['dt']
+				create_tbl = table_specs['ct']
+				field_info = table_specs['fi']
+				
+				# drop the table if it exists then recreate it
+				cur.execute(drop_tbl)
+				cur.execute(create_tbl)
+				conn.commit()
 
-	#for feature in layer:
+			fc_name = os.path.basename(path)
+			print 'Loading feature class: {0}'.format(fc_name)
+			
+			for j, feature in enumerate(layer, 1):
+				insert_cmd = generateInsertCommand(
+					feature, field_info, tbl_name, cur)
+				cur.execute(insert_cmd)
 
-	pg_cur.close()
+				if j % 500 == 0:
+					sys.stdout.write('X')
+			
+			conn.commit()
+			sys.stdout.write('\n\n')
+
+		# Add a primary key and spatial index to the newly
+		# populated table
+		ix_cmds = generateIxCommands(tbl_name)
+		pk_cmd = ix_cmds['pk_cmd']
+		geom_ix_cmd = ix_cmds['geom_ix_cmd']
+
+		cur.execute(pk_cmd)
+		cur.execute(geom_ix_cmd)
+		conn.commit()
+
+	cur.close()
+	conn.close()
 
 def defineDataGroups():
-	""""""
+	""""Group datasets that are of the same year and geo-type so that each group
+	cab be loaded into a single table"""
 
 	data_groups = {}
 	geo_keys = [
@@ -73,52 +112,91 @@ def defineDataGroups():
 
 	return data_groups
 
-def createTigerSchema():
-	""""""
-
-	pg_cur = createPgCursor()
-	schema_cmd="CREATE SCHEMA $pg_schema"
-	pg_cur.extracted_files(schema_cmd)
-
-	pg_cur.close()
-
 def createPgCursor():
-	""""""
+	"""Create a database cursor that can run queries against the db defined
+	at the top of this script"""
 
-	pg_template = 'dbname={0} user={1} host={2} password={3}'
-	pg_str = pg_template.format(pg_dbase, pg_user, pg_host, pg_pass)
-	pg_conn = psycopg2.connect(pg_str)
-	pg_cur = pg_conn.cursor()
+	conn_template = 'dbname={0} user={1} host={2} password={3}'
+	conn_str = conn_template.format(pg_dbname, pg_user, pg_host, pg_password)
+	conn = psycopg2.connect(conn_str)
+	cur = conn.cursor()
 
-	return pg_cur
+	return (conn, cur)
 
-def generateTableCommand(shp_path, tbl_name):
-	""""""
+def generateTableCommands(layer, tbl_name):
+	"""Create a SQL command that will generate a table with a schema that
+	matches that of the shapefile that is passed to it"""
 
-	field_list = []
-	shp = osgeo.ogr.Open(shp_path)
-	layer = shp.GetLayer(0)
+	field_info = []
 	lyr_info = layer.GetLayerDefn()
 	
 	for i in range(lyr_info.GetFieldCount()):
 		f_name = lyr_info.GetFieldDefn(i).GetName()
 		f_type_id = lyr_info.GetFieldDefn(i).GetType()
 		f_type = lyr_info.GetFieldDefn(i).GetFieldTypeName(f_type_id)
-
-		field_list.append((f_name.lower(), fld_type_dict[f_type]))
+		field_info.append((f_name, fld_type_dict[f_type]))
 
 	tbl_template =  """CREATE TABLE {0}.{1} (
-						id serial,
-						geom geometry,
-						{1}
-					)"""
-	field_syntax = ', '.join([n + ' ' + t for n, t in field_list])
-	table_cmd = tbl_template.format(pg_schema, tbl_name, field_syntax)
+						geom GEOMETRY,
+						{2}
+					);"""
+	field_syntax = ', '.join([n.lower() + ' ' + t for n, t in field_info])
+	create_tbl = tbl_template.format(pg_schema, tbl_name, field_syntax)
+	drop_tbl = "DROP TABLE IF EXISTS {0}.{1} CASCADE;".format(pg_schema, tbl_name)
+	
+	return {
+		'ct': create_tbl,
+		'dt': drop_tbl,
+		'fi': field_info
+	}
 
-	return table_cmd
+def generateInsertCommand(feature, field_info, tbl_name, cur):
+	"""Based on a feature (row) from a shapefile generate a command
+	that will insert that information into a postgresql table"""
+
+	# in addition to inserting the data this command will reproject it
+	# to the epsg provided in parameter 2
+	insert_template = """INSERT INTO {0}.{1}
+						VALUES (ST_Transform(ST_GeomFromText({2}, {3}), {4}),
+						{5}
+						);"""
+	wkt_geom = '\'{0}\''.format(feature.GetGeometryRef().ExportToWkt())
+	
+	# mogrify maps values into a string that will preserve their types for
+	# a sql query (for instance strings will be quotes and numbers will not)
+	fv_list = [feature.GetField(fn) for fn, ft in field_info]
+	mog_str = ', '.join(['%s' for fv in fv_list])
+	fv_syntax = cur.mogrify(mog_str, fv_list)
+	
+	insert_cmd = insert_template.format(
+		pg_schema,
+		tbl_name, 
+		wkt_geom, 
+		tiger_epsg, 
+		or_spn_epsg, 
+		fv_syntax
+	)
+	return insert_cmd
+
+def generateIxCommands(tbl_name):
+	""""""
+
+	pk_template = """ALTER TABLE {0}.{1} ADD id SERIAL PRIMARY KEY;"""
+	pk_cmd = pk_template.format(pg_schema, tbl_name)
+
+	geom_ix_template = """CREATE INDEX {0} ON {1}.{2} USING GIST (geom);"""
+	geom_ix_name = '{0}_geom_ix'.format(tbl_name)
+	geom_ix_cmd = geom_ix_template.format(geom_ix_name, pg_schema, tbl_name)
+
+	return {
+		'pk_cmd': pk_cmd, 
+		'geom_ix_cmd': geom_ix_cmd
+	}
+
 
 def process_options(arglist=None):
-	""""""
+	"""Define options that users can pass through the command line, in this
+	case these are all postgres database parameters"""
 
 	parser = argparse.ArgumentParser()
 	parser.add_argument(
@@ -166,14 +244,14 @@ def main():
 	global pg_dbname
 	global pg_schema
 
-	args = sys.argv[1]
+	args = sys.argv[1:]
 	options = process_options(args)
 
 	pg_host = options.pg_host
 	pg_user	= options.pg_user
 	pg_password = options.pg_password
 	pg_dbname = options.pg_dbname
-	pg_password = options.pg_password
+	pg_schema = options.pg_schema
 
 	loadGeoData()
 
