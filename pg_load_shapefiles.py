@@ -196,7 +196,6 @@ def generateIxCommands(tbl_name):
 		'geom_ix_cmd': geom_ix_cmd
 	}
 
-
 def process_options(arglist=None):
 	"""Define options that users can pass through the command line, in this
 	case these are all postgres database parameters"""
@@ -238,7 +237,7 @@ def process_options(arglist=None):
 
 def main():
 	"""
-	>> python pg_load_shapefiles.py -h localhost -u postgres -d census
+	>> python pg_load_shapefiles.py -H localhost -u postgres -d census
 	"""
 
 	global pg_host
