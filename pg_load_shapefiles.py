@@ -38,6 +38,7 @@ def loadGeoData():
 	except psycopg2.ProgrammingError as e:
 		conn.rollback()
 		print e.message
+		print 'skipping schema creation'
 
 	for tbl_name, shp_paths in data_groups.iteritems():
 		for i, path in enumerate(shp_paths):
@@ -75,6 +76,8 @@ def loadGeoData():
 		pk_cmd = ix_cmds['pk_cmd']
 		geom_ix_cmd = ix_cmds['geom_ix_cmd']
 
+		ix_msg = 'creating primary key and spatial index for {0}'
+		print ix_msg.format(tbl_name)
 		cur.execute(pk_cmd)
 		cur.execute(geom_ix_cmd)
 		conn.commit()
