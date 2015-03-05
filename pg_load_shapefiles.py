@@ -34,6 +34,7 @@ def loadGeoData():
 	schema_cmd = "CREATE SCHEMA {0};".format(pg_schema)
 	try:
 		cur.execute(schema_cmd)
+		print schema_cmd
 		conn.commit()
 	except psycopg2.ProgrammingError as e:
 		conn.rollback()
