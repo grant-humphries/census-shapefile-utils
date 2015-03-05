@@ -76,11 +76,13 @@ def loadGeoData():
 		ix_cmds = generateIxCommands(tbl_name)
 		pk_cmd = ix_cmds['pk_cmd']
 		geom_ix_cmd = ix_cmds['geom_ix_cmd']
+		geoid_ix_cmd = ix_cmds['geoid_ix_cmd']
 
-		ix_msg = 'creating primary key and spatial index for {0}'
+		ix_msg = 'Creating indices for {0}...'
 		print ix_msg.format(tbl_name)
 		cur.execute(pk_cmd)
 		cur.execute(geom_ix_cmd)
+		cur.execute(geoid_ix_cmd)
 		conn.commit()
 
 	cur.close()
@@ -183,18 +185,39 @@ def generateInsertCommand(feature, field_info, tbl_name, cur):
 	return insert_cmd
 
 def generateIxCommands(tbl_name):
-	""""""
+	"""Generate commands that will add indices to the table holding the census
+	geography, these will speed joins"""
 
 	pk_template = """ALTER TABLE {0}.{1} ADD id SERIAL PRIMARY KEY;"""
 	pk_cmd = pk_template.format(pg_schema, tbl_name)
 
-	geom_ix_template = """CREATE INDEX {0} ON {1}.{2} USING GIST (geom);"""
+	ix_template = """CREATE INDEX {0} ON {1}.{2} USING {2} ({3});"""
 	geom_ix_name = '{0}_geom_ix'.format(tbl_name)
-	geom_ix_cmd = geom_ix_template.format(geom_ix_name, pg_schema, tbl_name)
+	geom_ix_type = 'GIST'
+	geom_col = 'geom'
+	geom_ix_cmd = geom_ix_template.format(
+		geom_ix_name, 
+		pg_schema, 
+		tbl_name, 
+		geom_ix_type, 
+		geom_col
+	)
+
+	geoid_ix_name = '{0}_geoid_ix'.format(tbl_name)
+	geoid_ix_type = 'BTREE'
+	geoid_col = 'geoid'
+	geoid_ix_cmd = geoid_ix_template.format(
+		geoid_ix_name, 
+		pg_schema, 
+		tbl_name, 
+		geoid_ix_type, 
+		geoid_col
+	)
 
 	return {
 		'pk_cmd': pk_cmd, 
-		'geom_ix_cmd': geom_ix_cmd
+		'geom_ix_cmd': geom_ix_cmd,
+		'geoid_ix_cmd': geoid_ix_cmd
 	}
 
 def process_options(arglist=None):
