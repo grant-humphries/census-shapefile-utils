@@ -78,10 +78,11 @@ def loadGeoData():
 		geom_ix_cmd = ix_cmds['geom_ix_cmd']
 		geoid_ix_cmd = ix_cmds['geoid_ix_cmd']
 
-		ix_msg = 'Creating indices for {0}...'
-		print ix_msg.format(tbl_name)
+		print pk_cmd
 		cur.execute(pk_cmd)
+		print geom_ix_cmd
 		cur.execute(geom_ix_cmd)
+		print geoid_ix_cmd
 		cur.execute(geoid_ix_cmd)
 		conn.commit()
 
@@ -191,11 +192,11 @@ def generateIxCommands(tbl_name):
 	pk_template = """ALTER TABLE {0}.{1} ADD id SERIAL PRIMARY KEY;"""
 	pk_cmd = pk_template.format(pg_schema, tbl_name)
 
-	ix_template = """CREATE INDEX {0} ON {1}.{2} USING {2} ({3});"""
+	ix_template = """CREATE INDEX {0} ON {1}.{2} USING {3} ({4});"""
 	geom_ix_name = '{0}_geom_ix'.format(tbl_name)
 	geom_ix_type = 'GIST'
 	geom_col = 'geom'
-	geom_ix_cmd = geom_ix_template.format(
+	geom_ix_cmd = ix_template.format(
 		geom_ix_name, 
 		pg_schema, 
 		tbl_name, 
@@ -203,10 +204,12 @@ def generateIxCommands(tbl_name):
 		geom_col
 	)
 
+
 	geoid_ix_name = '{0}_geoid_ix'.format(tbl_name)
 	geoid_ix_type = 'BTREE'
-	geoid_col = 'geoid'
-	geoid_ix_cmd = geoid_ix_template.format(
+	geoid_ext = ''.join([c for c in tbl_name.split('_')[0] if c.isdigit()])
+	geoid_col = 'geoid' + geoid_ext
+	geoid_ix_cmd = ix_template.format(
 		geoid_ix_name, 
 		pg_schema, 
 		tbl_name, 
